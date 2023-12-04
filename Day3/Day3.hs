@@ -1,81 +1,102 @@
 module Main where
 
 import Data.Array
-import Data.Char (isDigit, isSymbol, isAlphaNum)
+import Data.Char (isDigit, isAlphaNum)
 import Data.Maybe
 
-type Matrix a = Array Int (Array Int a)
+-- Lower/Upper Bounds
+data Bound = Bound { lower :: Int, upper :: Int}
+  deriving Show
+-- A entry on the character grid. A Part has a serial number and Symbol a defining symbol.
+-- Both types specify a row and column span.
+data Entry = Part {num :: Int, rows :: Bound, cols :: Bound}
+           | Symbol {char :: Char, rows :: Bound, cols :: Bound}
+  deriving Show
+isSymbolEntry :: Entry -> Bool
+isSymbolEntry entry = case entry of Symbol {} -> True; _ -> False
 
-getDimensions :: Matrix a -> (Int, Int)
-getDimensions matrix = (numRows, numCols)
+-- Define a L-inf norm for distances on the character grid.
+class Distance a where
+  dist :: a -> a -> Int
+instance Distance Int where
+  dist a b = abs (a - b)
+instance Distance Bound where
+  dist (Bound lb1 up1) (Bound lb2 up2) = min (dist lb1 up2) (dist lb2 up1)
+instance Distance Entry where
+  dist e1 e2 = max (dist (rows e1) (rows e2)) (dist (cols e1) (cols e2))
+
+isValidSymbol :: Char -> Bool
+isValidSymbol c = not (isAlphaNum c) && c /= '.'
+
+-- Parses a integer which begins a string, "123Hello" -> (123, "Hello")
+parseLeadingInt :: [Char] -> Maybe (Int, [Char])
+parseLeadingInt str = case span isDigit str of
+  ("", _)      -> Nothing
+  (digits, as) -> Just (read digits ::Int, as)
+
+-- Parses all Symbols in a row.
+parseRowSymbols :: Int -> [Char] -> [Entry]
+parseRowSymbols rowInd = parseRowSymbols' rowInd 1
+  where parseRowSymbols' _ _ [] = []
+        parseRowSymbols' r c (a:as) = if isValidSymbol a then
+                                        Symbol a (Bound r r) (Bound c c) : parseRowSymbols' r (c+1) as
+                                      else
+                                        parseRowSymbols' r (c+1) as
+-- Parses all Parts in a row.
+parseRowParts :: Int -> [Char] -> [Entry]
+parseRowParts rowInd = parseRowParts' rowInd 1
+  where parseRowParts' _ _ [] = []
+        parseRowParts' r c (a:as) = case parseLeadingInt (a:as) of
+                                      Nothing -> parseRowParts' r (c+1) as
+                                      Just (num, bs) ->
+                                        let numLen = length (a:as) - length bs
+                                        in Part num (Bound r r) (Bound c (c+numLen-1)) : parseRowParts' r (c+numLen) bs
+
+parse :: [[Char]] -> [Entry]
+parse lines = concat (zipWith parseEntries [0..] lines)
+  where parseEntries r line = parseRowSymbols r line ++ parseRowParts r line
+
+
+-- type SerialNumber = SerialNumber Entry
+-- instance Semigroup SerialNumber where
+--   (SerialNumber e1) <> (SerialNumber e2) = Draw (max a x) (max b y) (max c z)
+
+-- instance Monoid Draw where
+--   mempty = Draw 0 0 0
+
+
+-- Sum up all valid serial numbers.
+solve1 :: [Entry] -> Int
+solve1 entries = foldr (\(Part num _ _) b -> num+b) 0 validParts
   where
-    (_, numRows) = bounds matrix
-    numCols = if numRows == 0 then 0 else let (_, c) = bounds (matrix ! 1) in c
+    symbols = filter isSymbolEntry entries             -- Filter out only symbols.
+    parts = filter (not . isSymbolEntry) entries       -- Filter out only parts.
+    validParts = filter isValidPart parts         -- Get valid parts.
+    isValidPart (Part a b c) = any (\sym -> dist (Part a b c) sym == 1) symbols
 
-getElement :: (Int, Int) -> Matrix a -> a
-getElement (row, col) matrix = (matrix ! row) ! col
-
-createMatrixFromList :: [[a]] -> Matrix a
-createMatrixFromList ls = listArray (1, numRows) (map (listArray (1, numCols)) ls)
+-- solve2 :: [Entry] -> Int
+solve2 entries = (map partNeighbors gears)
   where
-    numRows = length ls
-    numCols = if numRows == 0 then 0 else length (head ls)
-
-isSymbolAdjacent :: (Int, (Int, Int)) -> Matrix Char -> Bool
-isSymbolAdjacent (row, (colStart, colEnd)) matrix
-    | colStart > colEnd || nRows == 0 || nCols == 0 = False
-    | otherwise = any (\c -> any (\r -> isValidSymbol (r, c)) searchRows) searchCols
-    where
-        isValidSymbol (r, c) = not (isAlphaNum (getElement (r, c) matrix)) && (getElement (r, c) matrix /= '.')
-        (nRows, nCols) = getDimensions matrix
-        searchRows = [max (row-1) 1 .. min (row+1) nRows]
-        searchCols = [max (colStart-1) 1 .. min (colEnd+1) nCols]
-
-parseLeadingInt :: (Int, Int) -> Matrix Char -> Maybe (Int, Int)
-parseLeadingInt (row, col) matrix
-    | null digits = Nothing
-    | otherwise = Just (read digits, length digits)
-  where
-    (nRows, nCols) = getDimensions matrix
-    digits = takeWhile isDigit $ map (\c -> getElement (row, c) matrix) [col..nCols]
-
-parsePartNumbers :: Matrix Char -> [[Int]]
-parsePartNumbers matrix = map (\r -> partNumbers (r, 1)) [1..nRows]
-  where
-    partNumbers (row, col)
-        | col <= 0 || col > nCols || row <= 0 || row > nRows = []
-        | otherwise = case parseLeadingInt (row, col) matrix of
-            Nothing        -> partNumbers (row, col+1)
-            Just (a, lenA) -> if isSymbolAdjacent (row, (col,col+(lenA-1))) matrix
-                              then a:partNumbers (row, col+lenA)
-                              else partNumbers (row, col+lenA)
-    (nRows, nCols) = getDimensions matrix
-
-solve1 :: Matrix Char -> Int
-solve1 matrix = sum (map sum (parsePartNumbers matrix))
-
-parseLeadingIntList :: [Char] -> Maybe (Int, [Char])
-parseLeadingIntList str = case span isDigit str of
-    ("", _)      -> Nothing
-    (digits, as) -> Just (read digits ::Int, as)
-
-parseRowGearRatio :: [Char] -> [Int]
-parseRowGearRatio [] = []
-parseRowGearRatio (a:as) = case parseLeadingIntList (a:as) of
-    Nothing -> parseRowGearRatio as
-    Just (b, '*':bs) -> case parseLeadingIntList bs of
-        Nothing -> parseRowGearRatio bs
-        Just (c, cs) -> b*c:parseRowGearRatio as
-    Just (b, bs) -> parseRowGearRatio bs
+    parts = filter (not . isSymbolEntry) entries
+    symbols = filter isSymbolEntry entries
+    gears = filter (\sym -> isStarSymbol sym && length (partNeighbors sym) >= 2) symbols
+    isStarSymbol entry = case entry of Symbol '*' _ _ -> True; _ -> False
+    partNeighbors symbol = filter (\part -> dist symbol part == 1) parts
 
 main :: IO ()
 main = do
-    input <- readFile "data/input1.txt"
+    input <- readFile "data/test1.txt"
     let linesOfFiles = lines input
-    let mat = createMatrixFromList linesOfFiles
 
-    print (solve1 mat)
+    mapM_ print (solve2 (parse linesOfFiles))
+    print (solve1 (parse linesOfFiles))
+    print (solve2 (parse linesOfFiles))
 
-    print (parseRowGearRatio (head linesOfFiles))
+    -- print (parseRowSymbols 1 (head linesOfFiles))
+    -- mapM_ print (parseRowParts 1 (head linesOfFiles))
+
+    -- print (solve1 mat)
+
+    -- print (parseRowGearRatio (head linesOfFiles))
 
     -- print mat
