@@ -56,47 +56,31 @@ parse :: [[Char]] -> [Entry]
 parse lines = concat (zipWith parseEntries [0..] lines)
   where parseEntries r line = parseRowSymbols r line ++ parseRowParts r line
 
-
--- type SerialNumber = SerialNumber Entry
--- instance Semigroup SerialNumber where
---   (SerialNumber e1) <> (SerialNumber e2) = Draw (max a x) (max b y) (max c z)
-
--- instance Monoid Draw where
---   mempty = Draw 0 0 0
-
-
 -- Sum up all valid serial numbers.
 solve1 :: [Entry] -> Int
 solve1 entries = foldr (\(Part num _ _) b -> num+b) 0 validParts
   where
     symbols = filter isSymbolEntry entries             -- Filter out only symbols.
     parts = filter (not . isSymbolEntry) entries       -- Filter out only parts.
-    validParts = filter isValidPart parts         -- Get valid parts.
-    isValidPart (Part a b c) = any (\sym -> dist (Part a b c) sym == 1) symbols
+    validParts = filter isValidPart parts              -- Get valid parts.
+    -- Valid part is one which has a distance of 1 to a symbol.
+    isValidPart part = any (\sym -> dist part sym == 1) symbols
 
--- solve2 :: [Entry] -> Int
-solve2 entries = (map partNeighbors gears)
+-- Sum up all gear ratios.
+solve2 :: [Entry] -> Int
+solve2 entries = sum (map (foldr (\(Part num _ _) b -> num*b) 1 . partNeighbors) gears)
   where
-    parts = filter (not . isSymbolEntry) entries
+    parts = filter (not . isSymbolEntry) entries      -- Separate all parts and all
     symbols = filter isSymbolEntry entries
     gears = filter (\sym -> isStarSymbol sym && length (partNeighbors sym) >= 2) symbols
     isStarSymbol entry = case entry of Symbol '*' _ _ -> True; _ -> False
+    -- For each symbol check if it has neighbors
     partNeighbors symbol = filter (\part -> dist symbol part == 1) parts
 
 main :: IO ()
 main = do
-    input <- readFile "data/test1.txt"
+    input <- readFile "data/input1.txt"
     let linesOfFiles = lines input
 
-    mapM_ print (solve2 (parse linesOfFiles))
     print (solve1 (parse linesOfFiles))
     print (solve2 (parse linesOfFiles))
-
-    -- print (parseRowSymbols 1 (head linesOfFiles))
-    -- mapM_ print (parseRowParts 1 (head linesOfFiles))
-
-    -- print (solve1 mat)
-
-    -- print (parseRowGearRatio (head linesOfFiles))
-
-    -- print mat
