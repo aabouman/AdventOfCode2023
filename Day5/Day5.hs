@@ -1,46 +1,65 @@
 module Main where
 
-import Data.List
-import Data.Monoid
+import Data.Maybe (fromMaybe)
+import Data.Text (Text, splitOn, pack, unpack)
+import Data.List (find, nub)
 
-import qualified Interval as I
-import qualified IntervalSet as S
-
-
-data Map = IntervalMap {from :: S.Interval Int, to :: S.Interval Int}
-         | Map [IntervalMap]
+data Range a = Range { lb :: a, ub :: a}
   deriving Show
--- -- Map a value through a Map.
-mapValue :: Int -> Map -> Int
-mapValue a (IntervalMap from to) = if S.member a from then lower r2 + (a - lower r1) else a
--- mapValue a (Map ims) = if S.member a from then lower r2 + (a - lower r1) else a
+data AffineTransform a = AffineTransform {linear :: a, bias :: a }
+  deriving Show
+data BoundedAffineTransform a = BoundedAffineTransform {domain :: Range a, affineTransform :: AffineTransform a }
+  deriving Show
+class Transformable t a where
+    applyTransform :: t -> a -> a
 
-mapInterval :: S.Interval Int -> Map -> [S.Interval Int]
-mapInterval (Range lb up) (IntervalMap from to) =
-  where intersection (Range lb up)
-mapInterval i (IntervalMap from to) = [i]
+data SeedTransform a = SeedTransform {name :: [Char], transforms :: [BoundedAffineTransform a]}
+  deriving Show
 
-check (IntervalMap {}) = True
-check (Map (im:ims)) = foldr (\x -> I.intersection (from x)) (from im) im
+member :: Ord a => a -> Range a -> Bool
+member x (Range lb ub) = lb <= x && x <= ub
 
-instance Semigroup Map where
-  (IntervalMap from1 to1) <> (IntervalMap from2 to2) =
-    where outInIntersection = case (intersection to1 from2) of Empty -> IntervalMap Empty Empty
+instance Transformable (AffineTransform Int) Int where
+    applyTransform (AffineTransform a b) x = a * x + b
+instance Transformable (BoundedAffineTransform Int) Int where
+    applyTransform (BoundedAffineTransform domain affineTransform) x
+      | member x domain = applyTransform affineTransform x
+      | otherwise = x
+instance Transformable (SeedTransform Int) Int where
+    applyTransform (SeedTransform _ transforms) x = case transform of Nothing -> x; Just t -> applyTransform t x
+      where transform = find (member x . domain) transforms
 
-instance Monoid Map where
-    mempty = IntervalMap Full Full -- Identity Map
+parseSeeds :: [Char] -> [Int]
+parseSeeds('s':'e':'e':'d':'s':':':as) = Prelude.map read $ words as :: [Int]
+
+parseMap :: [Char] -> SeedTransform Int
+parseMap paragraph = SeedTransform name (map parseTransform mapStrings)
+  where tmp = splitOn (pack " map:\n") (pack paragraph)
+        name = unpack (head tmp)
+        mapStrings = lines (unpack (last tmp))
+        valuesToTransform [a, b, c] = BoundedAffineTransform (Range b (b+c-1)) (AffineTransform 1 (a-b))
+        parseTransform mapStr = valuesToTransform (take 3 (Prelude.map read $ words mapStr :: [Int]))
+
+solve1 :: (Foldable t, Transformable a1 a2, Ord a2) => t a1 -> [a2] -> Maybe a2
+solve1 seedMaps seeds = case map (tmp seedMaps) seeds of [] -> Nothing; ls -> Just (minimum ls)
+  where tmp seedMaps seed = foldl (flip applyTransform) seed seedMaps
+
+parseSeeds2 :: [Char] -> [Int]
+parseSeeds2 as = helper (parseSeeds as)
+  where helper [] = []
+        helper (a:b:bs) = [a..(a+b-1)] ++ helper bs
 
 main :: IO ()
 main = do
-    let i1 = I.Range 1 3
-    let i2 = I.Range 4 8
-    let i3 = I.Range 10 21
-    let s1 = S.fromList [ i2, i3, i1 ]
+    input <- readFile "data/input1.txt"
+    let paragraphs = map unpack (splitOn (pack "\n\n") (pack input))
 
-    print (filter (== I.Empty) [ i2, i3, i1 ])
+    let seeds = parseSeeds (head paragraphs)
+    let seedMaps = map parseMap (drop 1 paragraphs)
+    print ""
+    print (solve1 seedMaps seeds)
 
-    print (s1)
-    print ((S.union) s1 (S.IntervalSet [I.Range 3 5]))
-    print ((S.union) s1 (S.IntervalSet [I.Range 2 11]))
-    print ((S.union) s1 (S.IntervalSet [I.Full]))
-    print ((S.intersection) s1 (S.IntervalSet [I.Range 3 5]))
+    let seeds2 = parseSeeds2 (head paragraphs)
+    let seedMaps = map parseMap (drop 1 paragraphs)
+    print ""
+    print (solve1 seedMaps seeds2)
