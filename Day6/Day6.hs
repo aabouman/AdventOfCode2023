@@ -1,7 +1,5 @@
 module Main where
 
-import Data.Fixed
-
 data Race = Race {time :: Int, distance ::Int}
   deriving Show
 data RaceStrategy = RaceStrategy {race :: Race, holdDuration :: Int}
@@ -31,9 +29,9 @@ solve1 :: [Race] -> Int
 solve1 races = product (map countWinningStrategies races)
 
 parseTime2 :: [Char] -> Int
-parseTime2('T':'i':'m':'e':':':as) = read $ as :: Int
+parseTime2('T':'i':'m':'e':':':as) = read as :: Int
 parseDistance2 :: [Char] -> Int
-parseDistance2('D':'i':'s':'t':'a':'n':'c':'e':':':as) = read $ as :: Int
+parseDistance2('D':'i':'s':'t':'a':'n':'c':'e':':':as) = read as :: Int
 parse2 :: [Char] -> Race
 parse2 str = (\[a, b]-> Race (parseTime2 (filter (/= ' ') a)) (parseDistance2 (filter (/= ' ') b))) ls
   where ls = take 2 (lines str)
